@@ -51,7 +51,11 @@
         letter-spacing: -0.03em;
         line-height: 1.1;
         margin-bottom: 6px;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        transition: opacity .15s;
       }
+      h1:active { opacity: 0.5; }
 
       p.sub {
         font-size: var(--text-sm);
@@ -177,7 +181,7 @@
   <body>
     <main class="wrap">
       <header>
-        <h1>アプリポータル</h1>
+        <h1 id="title" title="タップして更新">アプリポータル</h1>
         <p class="sub">利用するアプリを選んでください</p>
       </header>
       <ul class="card-list" id="cardList"></ul>
@@ -358,6 +362,10 @@
 
       const isTouchDevice = () => window.matchMedia('(pointer: coarse)').matches;
       renderList(loadOrder());
+
+      document.getElementById('title').addEventListener('click', () => {
+        location.href = location.pathname + '?_=' + Date.now();
+      });
     </script>
   </body>
 </html>
