@@ -11,6 +11,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="ポータル" />
     <title>アプリポータル</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
     <style>
       :root {
         color-scheme: dark;
@@ -84,9 +87,13 @@
       }
       @media (prefers-reduced-motion: reduce) {
         .card-item { animation: none; }
+        a.card:hover { transform: none; }
+        #drag-clone { transform: none; }
       }
 
       a.card {
+        position: relative;
+        overflow: hidden;
         display: flex;
         align-items: center;
         gap: 14px;
@@ -109,6 +116,16 @@
       }
       a.card:active { transform: scale(0.985); box-shadow: none; }
 
+      .card-bar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 2px;
+        height: 100%;
+        border-radius: 16px 0 0 16px;
+        background: var(--c);
+      }
+
       .card-icon {
         width: 46px;
         height: 46px;
@@ -126,6 +143,10 @@
         font-size: var(--text-base);
         font-weight: 600;
         letter-spacing: -0.015em;
+      }
+      .card-title.mono {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        letter-spacing: .04em;
       }
 
       .card-desc {
@@ -189,21 +210,49 @@
     </main>
 
     <script>
+      // 色は運用ルール: 表示中の全カード色をHSL hueで比較し、差20°未満のペアがあれば
+      // 片方を30°以上ずらす(EDGE/PULSE/LOGが同系の暖色に密集していたため調整済み)
       const APPS = [
-        { id: 'hyperliquid-bot', href: '/hyperliquid-bot/', emoji: '📈', color: '#f5a623', title: 'EDGE', desc: 'BTC自動売買bot(dry-run)のポジション監視' },
-        { id: 'agents',   href: '/agents/',   emoji: '🤖', color: '#a855f7', title: 'BASE',  desc: 'エージェント管理・監視ログ・Claude使用量' },
-        { id: 'briefing', href: '/briefing',  emoji: '📰', color: '#f59e0b', title: 'PULSE', desc: '毎朝の自動ニュースまとめ' },
-        { id: 'diary',    href: '/diary/',    emoji: '📓', color: '#d4a030', title: 'LOG',   desc: 'Claude機能開発の記録' },
+        { id: 'hyperliquid-bot', href: '/hyperliquid-bot/', emoji: '📈', color: '#f5a623', title: 'EDGE', desc: 'BTC自動売買bot(dry-run)のポジション監視', mono: true },
+        { id: 'agents',   href: '/agents/',   emoji: '🤖', color: '#a855f7', title: 'BASE',  desc: 'エージェント管理・監視ログ・Claude使用量', mono: true },
+        { id: 'briefing', href: '/briefing',  emoji: '📰', color: '#f2542d', title: 'PULSE', desc: '毎朝の自動ニュースまとめ', mono: true },
+        { id: 'diary',    href: '/diary/',    emoji: '📓', color: '#8a9a3a', title: 'LOG',   desc: 'Claude機能開発の記録', mono: true },
       ];
 
       const STORAGE_KEY = 'portal-order-v3';
+      const ACCESS_KEY = 'portal-access-v1';
 
-      function cardHTML(app) {
+      // ── アクセス履歴（並び替えの「意図」とは別軸の「実績」表示用） ──
+      function getAccessMap() {
+        try { return JSON.parse(localStorage.getItem(ACCESS_KEY)) || {}; }
+        catch { return {}; }
+      }
+
+      function recordAccess(id) {
+        const map = getAccessMap();
+        map[id] = Date.now();
+        localStorage.setItem(ACCESS_KEY, JSON.stringify(map));
+      }
+
+      // 未使用時は1.0(死んだポータルに見せない)、当日アクセス1.0、週内0.6、それ以前・未記録0.35
+      function computeOpacity(id, map) {
+        if (!Object.keys(map).length) return 1;
+        const ts = map[id];
+        if (!ts) return 0.35;
+        const ageMs = Date.now() - ts;
+        if (ageMs < 24 * 3600_000) return 1;
+        if (ageMs < 7 * 86_400_000) return 0.6;
+        return 0.35;
+      }
+
+      function cardHTML(app, opacity) {
         const iconBg = `color-mix(in srgb,${app.color} 16%,#1c1c1e)`;
+        const titleClass = app.mono ? 'card-title mono' : 'card-title';
         return `<a class="card" href="${app.href}" style="--c:${app.color}">
+          <span class="card-bar" style="opacity:${opacity}"></span>
           <div class="card-icon" style="background:${iconBg}">${app.emoji}</div>
           <div class="card-body">
-            <div class="card-title">${app.title}</div>
+            <div class="${titleClass}">${app.title}</div>
             <div class="card-desc">${app.desc}</div>
           </div>
           <svg class="card-chevron" width="7" height="12" viewBox="0 0 7 12" fill="none">
@@ -224,6 +273,7 @@
         return [...APPS];
       }
 
+      // 並び替え(ドラッグ)は「意図」の表明であり、アクセス実績の記録対象ではない
       function saveOrder() {
         const ids = [...document.querySelectorAll('.card-item')].map(el => el.dataset.id);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
@@ -231,17 +281,26 @@
 
       function renderList(items) {
         const list = document.getElementById('cardList');
+        const accessMap = getAccessMap();
         list.innerHTML = '';
         items.forEach(app => {
           const li = document.createElement('li');
           li.className = 'card-item';
           li.dataset.id = app.id;
-          li.innerHTML = cardHTML(app);
+          li.innerHTML = cardHTML(app, computeOpacity(app.id, accessMap));
           list.appendChild(li);
         });
         attachTouch();
         if (!isTouchDevice()) attachMouse();
       }
+
+      // クリック(=実際に開いた)時のみ記録。再renderしても消えない委譲リスナーを1つだけ設置
+      document.getElementById('cardList').addEventListener('click', e => {
+        const card = e.target.closest('a.card');
+        if (!card) return;
+        const id = card.closest('.card-item')?.dataset.id;
+        if (id) recordAccess(id);
+      });
 
       // ---- タッチドラッグ（iPhone対応）----
       const LONG_PRESS = 400;
@@ -261,10 +320,14 @@
         offX = touch.clientX - rect.left;
         offY = touch.clientY - rect.top;
 
+        const cardEl = item.querySelector('a.card');
         clone = document.createElement('div');
         clone.id = 'drag-clone';
         clone.style.setProperty('--w', rect.width + 'px');
-        clone.innerHTML = item.querySelector('a.card').innerHTML;
+        clone.innerHTML = cardEl.innerHTML;
+        // つまんだカード自身の識別色を枠に反映（固定--accentへはフォールバックしない）
+        const cardColor = cardEl.style.getPropertyValue('--c');
+        if (cardColor) clone.style.borderColor = cardColor;
         clone.style.left = (touch.clientX - offX) + 'px';
         clone.style.top  = (touch.clientY - offY) + 'px';
         document.body.appendChild(clone);
