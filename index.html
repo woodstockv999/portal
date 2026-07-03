@@ -181,6 +181,47 @@
       .card-item.drop-above { border-top: 2px solid var(--accent); border-radius: 2px; }
       .card-item.drop-below { border-bottom: 2px solid var(--accent); border-radius: 2px; }
 
+      /* ---- EDGEカードの戦略ライブ表示(hlbot-dashboard /api/strategy から取得) ---- */
+      .live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: 8px;
+        font-size: 0.6rem;
+        letter-spacing: .08em;
+        vertical-align: 1px;
+        color: var(--muted);
+      }
+      .live-badge.live { color: #34c759; }
+      .live-badge.halt { color: #ff453a; }
+      .live-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+      .live-badge.live .live-dot { animation: pulse 2s ease-in-out infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+      @media (prefers-reduced-motion: reduce) { .live-badge.live .live-dot { animation: none; } }
+
+      .strat-rows { margin-top: 3px; display: flex; flex-direction: column; gap: 2px; }
+      .strat-row {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        min-width: 0;
+        font-size: 0.7rem;
+        color: var(--muted);
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        white-space: nowrap;
+      }
+      .strat-tag {
+        flex-shrink: 0;
+        font-size: 0.6rem;
+        padding: 1px 5px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        color: #b8b8bd;
+      }
+      .strat-main { color: #d5d5da; flex-shrink: 0; }
+      .strat-detail { overflow: hidden; text-overflow: ellipsis; }
+      .strat-pos { color: #f5a623; flex-shrink: 0; }
+
       #drag-clone {
         position: fixed;
         pointer-events: none;
@@ -213,7 +254,7 @@
       // 色は運用ルール: 表示中の全カード色をHSL hueで比較し、差20°未満のペアがあれば
       // 片方を30°以上ずらす(EDGE/PULSE/LOGが同系の暖色に密集していたため調整済み)
       const APPS = [
-        { id: 'hyperliquid-bot', href: '/hyperliquid-bot/', emoji: '📈', color: '#f5a623', title: 'EDGE', desc: 'BTC自動売買bot(dry-run)のポジション監視', mono: true },
+        { id: 'hyperliquid-bot', href: '/hyperliquid-bot/', emoji: '📈', color: '#f5a623', title: 'EDGE', desc: '自動売買botの成績・ポジション監視', mono: true },
         { id: 'hlbot-flow', href: '/hyperliquid-bot/architecture.html', emoji: '🧬', color: '#4a9eff', title: 'FLOW', desc: '自己進化オーケストレーションの仕組み(図解)', mono: true },
         { id: 'agents',   href: '/agents/',   emoji: '🤖', color: '#a855f7', title: 'BASE',  desc: 'エージェント管理・監視ログ・Claude使用量', mono: true },
         { id: 'briefing', href: '/briefing',  emoji: '📰', color: '#f2542d', title: 'PULSE', desc: '毎朝の自動ニュースまとめ', mono: true },
@@ -422,8 +463,39 @@
         });
       }
 
+      // ── EDGEカードに現在の戦略をライブ表示(認証cookieが無い/障害時は静的descのまま) ──
+      async function hydrateEdgeCard() {
+        const body = document.querySelector('.card-item[data-id="hyperliquid-bot"] .card-body');
+        if (!body) return;
+        try {
+          const res = await fetch('/hyperliquid-bot/api/strategy', { cache: 'no-store' });
+          if (!res.ok) return;
+          const d = await res.json();
+          if (!d.strategies || !d.strategies.length) return;
+
+          const mode = d.halted ? ['halt', 'HALT'] : d.dry_run ? ['', 'DRY'] : ['live', 'LIVE'];
+          const title = body.querySelector('.card-title');
+          if (title && !title.querySelector('.live-badge')) {
+            title.insertAdjacentHTML('beforeend',
+              ` <span class="live-badge ${mode[0]}"><span class="live-dot"></span>${mode[1]}</span>`);
+          }
+          const rows = d.strategies.map(s => {
+            const held = s.symbols.filter(sym => d.positions[sym]);
+            const pos = held.length
+              ? ` <span class="strat-pos">⦿${held.map(sym => `${sym}:${d.positions[sym]}`).join(' ')}</span>`
+              : '';
+            return `<div class="strat-row"><span class="strat-tag">${s.style}</span>` +
+                   `<span class="strat-main">${s.label} @${s.symbols.join('·')}</span>` +
+                   `<span class="strat-detail">${s.detail}</span>${pos}</div>`;
+          }).join('');
+          const desc = body.querySelector('.card-desc');
+          if (desc) desc.outerHTML = `<div class="strat-rows">${rows}</div>`;
+        } catch {}
+      }
+
       const isTouchDevice = () => window.matchMedia('(pointer: coarse)').matches;
       renderList(loadOrder());
+      hydrateEdgeCard();
 
       document.getElementById('title').addEventListener('click', () => {
         location.href = location.pathname + '?_=' + Date.now();
