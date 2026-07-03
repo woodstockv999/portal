@@ -199,28 +199,34 @@
       @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
       @media (prefers-reduced-motion: reduce) { .live-badge.live .live-dot { animation: none; } }
 
-      .strat-rows { margin-top: 3px; display: flex; flex-direction: column; gap: 2px; }
+      .strat-rows { margin-top: 4px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+      /* 行はブロック+インライン構成: flexの押し潰しが起きず、はみ出しは自然に…で省略される */
       .strat-row {
-        display: flex;
-        align-items: baseline;
-        gap: 6px;
         min-width: 0;
-        font-size: 0.7rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.72rem;
+        line-height: 1.5;
         color: var(--muted);
         font-family: 'JetBrains Mono', ui-monospace, monospace;
-        white-space: nowrap;
       }
       .strat-tag {
-        flex-shrink: 0;
+        display: inline-block;
         font-size: 0.6rem;
         padding: 1px 5px;
+        margin-right: 6px;
         border: 1px solid var(--border);
         border-radius: 5px;
         color: #b8b8bd;
+        vertical-align: 0.5px;
       }
-      .strat-main { color: #d5d5da; flex-shrink: 0; }
-      .strat-detail { overflow: hidden; text-overflow: ellipsis; }
-      .strat-pos { color: #f5a623; flex-shrink: 0; }
+      .strat-main { color: #d5d5da; }
+      .strat-pos { color: #f5a623; margin-left: 6px; }
+      .strat-detail { display: none; }               /* iPhone幅ではリスク%等の詳細は省略 */
+      @media (min-width: 460px) {
+        .strat-detail { display: inline; margin-left: 6px; }
+      }
 
       #drag-clone {
         position: fixed;
@@ -486,7 +492,7 @@
               : '';
             return `<div class="strat-row"><span class="strat-tag">${s.style}</span>` +
                    `<span class="strat-main">${s.label} @${s.symbols.join('·')}</span>` +
-                   `<span class="strat-detail">${s.detail}</span>${pos}</div>`;
+                   `${pos}<span class="strat-detail">${s.detail}</span></div>`;
           }).join('');
           const desc = body.querySelector('.card-desc');
           if (desc) desc.outerHTML = `<div class="strat-rows">${rows}</div>`;
